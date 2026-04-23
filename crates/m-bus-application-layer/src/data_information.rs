@@ -293,8 +293,7 @@ impl PartialEq<str> for TextUnit<'_> {
 #[cfg(feature = "std")]
 impl std::fmt::Display for TextUnit<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let value: Vec<u8> = self.0.iter().copied().rev().collect();
-        let value = String::from_utf8(value).unwrap_or_default();
+        let value: String = self.0.iter().rev().map(|&b| b as char).collect();
         write!(f, "{}", value)
     }
 }
@@ -302,8 +301,7 @@ impl std::fmt::Display for TextUnit<'_> {
 #[cfg(feature = "std")]
 impl From<TextUnit<'_>> for String {
     fn from(value: TextUnit<'_>) -> Self {
-        let value: Vec<u8> = value.0.iter().copied().rev().collect();
-        String::from_utf8(value).unwrap_or_default()
+        value.0.iter().rev().map(|&b| b as char).collect()
     }
 }
 
@@ -1002,6 +1000,24 @@ mod tests {
         let original_value = [0x6c, 0x61, 0x67, 0x69];
         let parsed = TextUnit::new(&original_value);
         assert_eq!(&parsed, "igal");
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn text_unit_latin1_swedish_characters() {
+        // "Malmö" in Latin-1 (reversed byte order per M-Bus)
+        let bytes = [0xF6, 0x6D, 0x6C, 0x61, 0x4D]; // ö m l a M
+        let text = TextUnit::new(&bytes);
+        assert_eq!(String::from(text), "Malmö");
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn text_unit_latin1_superscript_three() {
+        // "m³/h" in Latin-1 (reversed byte order per M-Bus)
+        let bytes = [0x68, 0x2F, 0xB3, 0x6D]; // h / ³ m
+        let text = TextUnit::new(&bytes);
+        assert_eq!(String::from(text), "m³/h");
     }
 
     #[test]
