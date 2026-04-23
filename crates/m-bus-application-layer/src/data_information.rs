@@ -119,10 +119,12 @@ impl DataInformationField {
     const fn has_extension(&self) -> bool {
         self.data & 0x80 != 0
     }
-}
 
-impl DataInformationFieldExtension {
-    const fn special_function(&self) -> SpecialFunctions {
+    pub const fn is_special_function(&self) -> bool {
+        self.data & 0x0F == 0x0F
+    }
+
+    pub const fn special_function(&self) -> SpecialFunctions {
         match self.data {
             0x0F => SpecialFunctions::ManufacturerSpecific,
             0x1F => SpecialFunctions::MoreRecordsFollow,
@@ -208,10 +210,7 @@ impl TryFrom<&DataInformationBlock<'_>> for DataInformation {
         let mut extension_index = 1;
         let mut tariff = 0;
         let mut device = 0;
-        let mut first_dife = None;
-
         if let Some(difes) = possible_difes {
-            first_dife = difes.clone().next();
             let mut tariff_index = 0;
             for (device_index, dife) in difes.clone().enumerate() {
                 if extension_index > MAXIMUM_DATA_INFORMATION_SIZE {
@@ -250,8 +249,8 @@ impl TryFrom<&DataInformationBlock<'_>> for DataInformation {
             0b1101 => DataFieldCoding::VariableLength,
             0b1110 => DataFieldCoding::BCDDigit12,
             0b1111 => DataFieldCoding::SpecialFunctions(
-                first_dife
-                    .ok_or(DataInformationError::DataTooShort)?
+                data_information_block
+                    .data_information_field
                     .special_function(),
             ),
             _ => unreachable!(), // This case should never occur due to the 4-bit width
@@ -731,14 +730,25 @@ impl DataFieldCoding {
                 }
             }
 
-            Self::SpecialFunctions(_code) => {
-                // Special functions parsing based on the code
-                Err(DataRecordError::DataInformationError(
-                    DataInformationError::Unimplemented {
-                        feature: "Special functions data parsing",
-                    },
-                ))
-            }
+            Self::SpecialFunctions(code) => match code {
+                SpecialFunctions::ManufacturerSpecific | SpecialFunctions::MoreRecordsFollow => {
+                    Ok(Data {
+                        value: Some(DataType::ManufacturerSpecific(input)),
+                        size: input.len(),
+                    })
+                }
+                SpecialFunctions::IdleFiller => Ok(Data {
+                    value: None,
+                    size: 0,
+                }),
+                SpecialFunctions::GlobalReadoutRequest => Ok(Data {
+                    value: None,
+                    size: 0,
+                }),
+                SpecialFunctions::Reserved => Err(DataRecordError::DataInformationError(
+                    DataInformationError::InvalidValueInformation,
+                )),
+            },
 
             Self::DateTypeG => {
                 let day = parse_single_or_every!(
